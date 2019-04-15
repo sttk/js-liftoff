@@ -7,16 +7,16 @@ var resolve = require('resolve');
 var flaggedRespawn = require('flagged-respawn');
 var isPlainObject = require('is-plain-object');
 var mapValues = require('object.map');
+var assign = require('object-assign');
 var fined = require('fined');
 
 var findCwd = require('./lib/find_cwd');
 var findConfig = require('./lib/find_config');
-var fileSearch = require('./lib/file_search');
 var parseOptions = require('./lib/parse_options');
-var silentRequire = require('./lib/silent_require');
 var buildConfigName = require('./lib/build_config_name');
 var registerLoader = require('./lib/register_loader');
 var getNodeFlags = require('./lib/get_node_flags');
+var findModule = require('./lib/find_module');
 
 function Liftoff(opts) {
   EE.call(this);
@@ -82,62 +82,60 @@ Liftoff.prototype.buildEnvironment = function(opts) {
     }
   }
 
-  // TODO: break this out into lib/
-  // locate local module and package next to config or explicitly provided cwd
-  /* eslint one-var: 0 */
-  var modulePath, modulePackage;
-  try {
-    var delim = path.delimiter;
-    var paths = (process.env.NODE_PATH ? process.env.NODE_PATH.split(delim) : []);
-    modulePath = resolve.sync(this.moduleName, { basedir: configBase || cwd, paths: paths });
-    modulePackage = silentRequire(fileSearch('package.json', [modulePath]));
-  } catch (e) {}
-
-  // if we have a configuration but we failed to find a local module, maybe
-  // we are developing against ourselves?
-  if (!modulePath && configPath) {
-    // check the package.json sibling to our config to see if its `name`
-    // matches the module we're looking for
-    var modulePackagePath = fileSearch('package.json', [configBase]);
-    modulePackage = silentRequire(modulePackagePath);
-    if (modulePackage && modulePackage.name === this.moduleName) {
-      // if it does, our module path is `main` inside package.json
-      modulePath = path.join(path.dirname(modulePackagePath), modulePackage.main || 'index.js');
-      cwd = configBase;
-    } else {
-      // clear if we just required a package for some other project
-      modulePackage = {};
-    }
-  }
+  var env = {
+    cwd: cwd,
+    require: preload,
+    configNameSearch: configNameSearch,
+    configPath: configPath,
+    configBase: configBase,
+  };
 
   var exts = this.extensions;
   var eventEmitter = this;
+  searchPaths = this.searchPaths;
+  opts = assign({}, opts);
 
   var configFiles = {};
   if (isPlainObject(this.configFiles)) {
     var notfound = { path: null };
     configFiles = mapValues(this.configFiles, function(prop, name) {
       var defaultObj = { name: name, cwd: cwd, extensions: exts };
-      return mapValues(prop, function(pathObj) {
+      return mapValues(prop, function(pathObj, dir) {
         var found = fined(pathObj, defaultObj) || notfound;
         if (isPlainObject(found.extension)) {
-          registerLoader(eventEmitter, found.extension, found.path, cwd);
+          registerLoader(eventEmitter, found.extension, found.path, env.cwd);
+          var prev = assign({}, opts);
+          eventEmitter.emit('findConfigFile', name, dir, found.path, opts);
+          if (opts.cwd !== prev.cwd || opts.configPath !== prev.cwd) {
+            var cwd = findCwd(opts);
+            var configPath = findConfig({
+              configNameSearch: configNameSearch,
+              searchPaths: opts.cwd ? [cwd] : [cwd].concat(searchPaths),
+              configPath: opts.configPath,
+            });
+            var configBase;
+            if (configPath) {
+              configBase = path.dirname(configPath);
+              if (!opts.cwd) {
+                cwd = configBase;
+              }
+            }
+            env.cwd = cwd;
+            env.configPath = configPath;
+            env.configBase = configBase;
+          }
         }
         return found.path;
       });
     });
   }
+  env.configFiles = configFiles;
 
-  return {
-    cwd: cwd,
-    require: preload,
-    configNameSearch: configNameSearch,
-    configPath: configPath,
-    configBase: configBase,
-    modulePath: modulePath,
-    modulePackage: modulePackage || {},
-    configFiles: configFiles,
-  };
+  var mod = findModule(this.moduleName, env.configBase, env.cwd);
+  env.modulePath = mod.modulePath;
+  env.modulePackage = mod.modulePackage;
+
+  return env;
 };
 
 Liftoff.prototype.handleFlags = function(cb) {
