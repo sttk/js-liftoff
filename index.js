@@ -26,14 +26,14 @@ function Liftoff(opts) {
 }
 util.inherits(Liftoff, EE);
 
-Liftoff.prototype.requireLocal = function(module, basedir) {
+Liftoff.prototype.requireLocal = function(moduleName, basedir) {
   try {
-    this.emit('beforeRequire', module);
-    var result = require(resolve.sync(module, { basedir: basedir }));
-    this.emit('require', module, result);
+    this.emit('beforeRequire', moduleName);
+    var result = require(resolve.sync(moduleName, { basedir: basedir }));
+    this.emit('require', moduleName, result);
     return result;
   } catch (e) {
-    this.emit('requireFail', module, e);
+    this.emit('requireFail', moduleName, e);
   }
 };
 
