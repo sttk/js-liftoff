@@ -12,13 +12,13 @@ var fined = require('fined');
 var findCwd = require('./lib/find_cwd');
 var arrayFind = require('./lib/array_find');
 var findConfig = require('./lib/find_config');
-var fileSearch = require('./lib/file_search');
 var needsLookup = require('./lib/needs_lookup');
 var parseOptions = require('./lib/parse_options');
 var silentRequire = require('./lib/silent_require');
 var buildConfigName = require('./lib/build_config_name');
 var registerLoader = require('./lib/register_loader');
 var getNodeFlags = require('./lib/get_node_flags');
+var findModulePackage = require('./lib/find_module_package');
 
 function Liftoff(opts) {
   EE.call(this);
@@ -159,33 +159,7 @@ Liftoff.prototype.buildEnvironment = function(opts) {
     }
   }
 
-  // TODO: break this out into lib/
-  // locate local module and package next to config or explicitly provided cwd
-  /* eslint one-var: 0 */
-  var modulePath, modulePackage;
-  try {
-    var delim = path.delimiter;
-    var paths = (process.env.NODE_PATH ? process.env.NODE_PATH.split(delim) : []);
-    modulePath = resolve.sync(this.moduleName, { basedir: configBase || cwd, paths: paths });
-    modulePackage = silentRequire(fileSearch('package.json', [modulePath]));
-  } catch (e) {}
-
-  // if we have a configuration but we failed to find a local module, maybe
-  // we are developing against ourselves?
-  if (!modulePath && configPath) {
-    // check the package.json sibling to our config to see if its `name`
-    // matches the module we're looking for
-    var modulePackagePath = fileSearch('package.json', [configBase]);
-    modulePackage = silentRequire(modulePackagePath);
-    if (modulePackage && modulePackage.name === this.moduleName) {
-      // if it does, our module path is `main` inside package.json
-      modulePath = path.join(path.dirname(modulePackagePath), modulePackage.main || 'index.js');
-      cwd = configBase;
-    } else {
-      // clear if we just required a package for some other project
-      modulePackage = {};
-    }
-  }
+  var pkg = findModulePackage(this.moduleName, configBase, cwd);
 
   return {
     cwd: cwd,
@@ -193,8 +167,8 @@ Liftoff.prototype.buildEnvironment = function(opts) {
     configNameSearch: configNameSearch,
     configPath: configPath,
     configBase: configBase,
-    modulePath: modulePath,
-    modulePackage: modulePackage || {},
+    modulePath: pkg.modulePath,
+    modulePackage: pkg.modulePackage || {},
     configFiles: configFiles,
     config: config,
   };
