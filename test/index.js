@@ -690,7 +690,6 @@ describe('Liftoff', function() {
 
 require('./lib/build_config_name');
 require('./lib/file_search');
-require('./lib/find_config');
 require('./lib/find_cwd');
 require('./lib/parse_options');
 require('./lib/silent_require');

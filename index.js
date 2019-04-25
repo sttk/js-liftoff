@@ -11,13 +11,13 @@ var fined = require('fined');
 
 var findCwd = require('./lib/find_cwd');
 var arrayFind = require('./lib/array_find');
-var findConfig = require('./lib/find_config');
 var needsLookup = require('./lib/needs_lookup');
 var parseOptions = require('./lib/parse_options');
 var silentRequire = require('./lib/silent_require');
-var buildConfigName = require('./lib/build_config_name');
 var registerLoader = require('./lib/register_loader');
 var getNodeFlags = require('./lib/get_node_flags');
+
+var findEnvPaths = require('./lib/find_env_paths');
 var findModulePackage = require('./lib/find_module_package');
 
 function Liftoff(opts) {
@@ -47,9 +47,6 @@ Liftoff.prototype.buildEnvironment = function(opts) {
   if (!Array.isArray(preload)) {
     preload = [preload];
   }
-
-  // make a copy of search paths that can be mutated for this run
-  var searchPaths = this.searchPaths.slice();
 
   // calculate current cwd
   var cwd = findCwd(opts);
@@ -128,45 +125,16 @@ Liftoff.prototype.buildEnvironment = function(opts) {
     return config;
   });
 
-  // if cwd was provided explicitly, only use it for searching config
-  if (opts.cwd) {
-    searchPaths = [cwd];
-  } else {
-    // otherwise just search in cwd first
-    searchPaths.unshift(cwd);
-  }
+  var env = findEnvPaths(opts, this.configName, this.extensions, this.searchPaths);
 
-  // calculate the regex to use for finding the config file
-  var configNameSearch = buildConfigName({
-    configName: this.configName,
-    extensions: Object.keys(this.extensions),
-  });
-
-  // calculate configPath
-  var configPath = findConfig({
-    configNameSearch: configNameSearch,
-    searchPaths: searchPaths,
-    configPath: opts.configPath,
-  });
-
-  // if we have a config path, save the directory it resides in.
-  var configBase;
-  if (configPath) {
-    configBase = path.dirname(configPath);
-    // if cwd wasn't provided explicitly, it should match configBase
-    if (!opts.cwd) {
-      cwd = configBase;
-    }
-  }
-
-  var pkg = findModulePackage(this.moduleName, configBase, cwd);
+  var pkg = findModulePackage(this.moduleName, env.configBase, env.cwd);
 
   return {
-    cwd: cwd,
+    cwd: env.cwd,
     require: preload,
-    configNameSearch: configNameSearch,
-    configPath: configPath,
-    configBase: configBase,
+    configNameSearch: env.configNameSearch,
+    configPath: env.configPath,
+    configBase: env.configBase,
     modulePath: pkg.modulePath,
     modulePackage: pkg.modulePackage || {},
     configFiles: configFiles,
