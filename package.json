@@ -21,6 +21,7 @@
     "cover": "nyc --reporter=lcov --reporter=text-summary npm test"
   },
   "dependencies": {
+    "@fav/prop.defaults-deep": "^1.0.1",
     "extend": "^3.0.0",
     "findup-sync": "^3.0.0",
     "fined": "^1.2.0",
@@ -36,7 +37,7 @@
     "eslint": "^2.13.1",
     "eslint-config-gulp": "^3.0.1",
     "mocha": "^3.5.3",
-    "nyc": "^13.3.0",
+    "nyc": "^14.0.0",
     "sinon": "~1.17.4"
   },
   "keywords": [

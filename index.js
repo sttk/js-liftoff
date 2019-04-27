@@ -1,24 +1,17 @@
 var util = require('util');
-var path = require('path');
 var EE = require('events').EventEmitter;
 
 var extend = require('extend');
 var resolve = require('resolve');
 var flaggedRespawn = require('flagged-respawn');
-var isPlainObject = require('is-plain-object');
-var mapValues = require('object.map');
-var fined = require('fined');
 
-var findCwd = require('./lib/find_cwd');
-var arrayFind = require('./lib/array_find');
-var needsLookup = require('./lib/needs_lookup');
 var parseOptions = require('./lib/parse_options');
-var silentRequire = require('./lib/silent_require');
-var registerLoader = require('./lib/register_loader');
 var getNodeFlags = require('./lib/get_node_flags');
 
+var loadConfigFiles = require('./lib/load_config_files');
 var findEnvPaths = require('./lib/find_env_paths');
 var findModulePackage = require('./lib/find_module_package');
+var preloadModules = require('./lib/preload_modules');
 
 function Liftoff(opts) {
   EE.call(this);
@@ -40,105 +33,20 @@ Liftoff.prototype.requireLocal = function(moduleName, basedir) {
 Liftoff.prototype.buildEnvironment = function(opts) {
   opts = opts || {};
 
-  // get modules we want to preload
-  var preload = opts.require || [];
-
-  // ensure items to preload is an array
-  if (!Array.isArray(preload)) {
-    preload = [preload];
-  }
-
-  // calculate current cwd
-  var cwd = findCwd(opts);
-
-  var exts = this.extensions;
-  var eventEmitter = this;
-
-  function findAndRegisterLoader(pathObj, defaultObj) {
-    var found = fined(pathObj, defaultObj);
-    if (!found) {
-      // TODO: Should this actually error on not found?
-      // throw new Error('Unable to find extends file: ' + xtends.path);
-      return;
-    }
-    if (isPlainObject(found.extension)) {
-      registerLoader(eventEmitter, found.extension, found.path, cwd);
-    }
-    return found.path;
-  }
-
-  function getModulePath(cwd, xtends) {
-    // If relative, we need to use fined to look up the file. If not, assume a node_module
-    if (needsLookup(xtends)) {
-      var defaultObj = { cwd: cwd, extensions: exts };
-      // Using `xtends` like this should allow people to use a string or any object that fined accepts
-      return findAndRegisterLoader(xtends, defaultObj);
-    }
-
-    return xtends;
-  }
-
-  var visited = {};
-  function loadConfig(cwd, xtends, prev) {
-    var configFilePath = getModulePath(cwd, xtends);
-    if (!configFilePath) {
-      return prev;
-    }
-
-    if (visited[configFilePath]) {
-      // TODO: emit warning about recursion
-      // throw new Error('We encountered a recursive extend for file: ' + configFilePath + '. Please remove the recursive extends.');
-      return prev;
-    }
-    // TODO: this should emit a warning if the configFile could not be loaded
-    var configFile = silentRequire(configFilePath);
-    visited[configFilePath] = true;
-    if (configFile && configFile.extends) {
-      var nextCwd = path.dirname(configFilePath);
-      return loadConfig(nextCwd, configFile.extends, configFile);
-    }
-    return extend(true /* deep */, prev, configFile || {});
-  }
-
-  var configFiles = {};
-  if (isPlainObject(this.configFiles)) {
-    configFiles = mapValues(this.configFiles, function(searchPaths, fileStem) {
-      var defaultObj = { name: fileStem, cwd: cwd, extensions: exts };
-
-      var foundPath = arrayFind(searchPaths, function(pathObj) {
-        return findAndRegisterLoader(pathObj, defaultObj);
-      });
-
-      return foundPath;
-    });
-  }
-
-  var config = mapValues(configFiles, function(startingLocation) {
-    var defaultConfig = {};
-    if (!startingLocation) {
-      return defaultConfig;
-    }
-
-    var config = loadConfig(cwd, startingLocation, defaultConfig);
-    // TODO: better filter?
-    delete config.extends;
-    return config;
-  });
-
-  var env = findEnvPaths(opts, this.configName, this.extensions, this.searchPaths);
-
-  var pkg = findModulePackage(this.moduleName, env.configBase, env.cwd);
+  var cfg = loadConfigFiles(this.configFiles, opts, this.extensions, this);
+  var env = findEnvPaths(opts, this.configName, this.extensions,
+    this.searchPaths);
+  var mod = findModulePackage(this.moduleName, env.configBase, env.cwd);
 
   return {
     cwd: env.cwd,
-    require: preload,
+    require: [].concat(opts.require || []),
     configNameSearch: env.configNameSearch,
     configPath: env.configPath,
     configBase: env.configBase,
-    modulePath: pkg.modulePath,
-    modulePackage: pkg.modulePackage || {},
-    configFiles: configFiles,
-    config: config,
+    modulePath: mod.modulePath,
+    modulePackage: mod.modulePackage || {},
+    configs: cfg,
   };
 };
 
@@ -162,6 +70,8 @@ Liftoff.prototype.prepare = function(opts, fn) {
   if (typeof fn !== 'function') {
     throw new Error('You must provide a callback function.');
   }
+
+  opts = opts || {};
 
   process.title = this.processTitle;
 
@@ -199,22 +109,10 @@ Liftoff.prototype.execute = function(env, forcedFlags, fn) {
       }
       if (ready) {
         preloadModules(this, env);
-        registerLoader(this, this.extensions, env.configPath, env.cwd);
         fn.call(this, env, argv);
       }
     }
   }.bind(this));
 };
-
-function preloadModules(inst, env) {
-  var basedir = env.cwd;
-  env.require.filter(toUnique).forEach(function(module) {
-    inst.requireLocal(module, basedir);
-  });
-}
-
-function toUnique(elem, index, array) {
-  return array.indexOf(elem) === index;
-}
 
 module.exports = Liftoff;

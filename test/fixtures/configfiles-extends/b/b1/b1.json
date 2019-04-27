@@ -1,0 +1,5 @@
+{
+  "extends": [],
+  "b1": "loaded",
+  "foo": { "bar": { "baz": "B1", "quux": "B1" } }
+}

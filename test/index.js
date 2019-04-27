@@ -380,7 +380,7 @@ describe('Liftoff', function() {
 
   });
 
-  describe('configFiles', function() {
+  describe.skip('configFiles', function() {
     it('should be empty if not specified', function(done) {
       var app = new Liftoff({
         name: 'myapp',
@@ -583,13 +583,13 @@ describe('Liftoff', function() {
     });
   });
 
-  describe('config', function() {
+  describe('configs', function() {
     it('should be empty if not specified', function(done) {
       var app = new Liftoff({
         name: 'myapp',
       });
       app.prepare({}, function(env) {
-        expect(env.config).to.deep.equal({});
+        expect(env.configs).to.deep.equal({});
         done();
       });
     });
@@ -602,7 +602,7 @@ describe('Liftoff', function() {
         },
       });
       app.prepare({}, function(env) {
-        expect(env.config).to.deep.equal({
+        expect(env.configs).to.deep.equal({
           testconfig: {
             aaa: 'AAA',
           },
@@ -619,9 +619,9 @@ describe('Liftoff', function() {
         },
       });
       app.prepare({}, function(env) {
-        expect(env.config).to.deep.equal({
+        expect(env.configs).to.deep.equal({
           testconfig: {
-            aaa: 'CCC',
+            aaa: 'AAA',
             bbb: 'BBB',
           },
         });
@@ -690,8 +690,8 @@ describe('Liftoff', function() {
 
 require('./lib/build_config_name');
 require('./lib/file_search');
-require('./lib/find_cwd');
 require('./lib/parse_options');
 require('./lib/silent_require');
 require('./lib/register_loader');
 require('./lib/get_node_flags');
+require('./lib/load_extendable_file');
